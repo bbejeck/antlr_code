@@ -1,0 +1,131 @@
+grammar FQL;
+
+options {
+  language = Java;
+}
+
+@header {
+  package bbejeck.antlr.fql;
+}
+
+@members {
+  StringBuilder builder = new StringBuilder("find ");
+  
+  StringBuilder filter = new StringBuilder();
+  
+  public void addString(String s){
+    if(s!=null){
+        builder.append(s);
+     }
+  }
+  
+  public String buildTimeArg(String s, String snum, String sign){
+       StringBuilder timeBuilder = new StringBuilder();
+       int num = Integer.parseInt(snum);
+       
+       if(s.equals("days")){
+           return timeBuilder.append(" -mtime ").append(sign).append(num).toString();
+       }
+       if(s.equals("hours")){
+           return timeBuilder.append(" -mmin ").append(sign).append((num*60)).toString();
+       }
+       
+       return timeBuilder.append(" -mmin ").append(sign).append(num).toString();
+  }
+}
+@lexer::header {
+  package bbejeck.antlr.fql;
+}
+
+evaluate returns [String query]
+     :  query';' {$query = builder.toString() + filter.toString() ;}
+     ;
+
+query 
+     :   select_stmt where_stmt 
+     ;
+
+select_stmt 
+     :  SELECT ALL FROM directory
+     
+     ;
+     
+directory
+     : (p='.'{addString($p.text);} | p='/'?{addString($p.text);}t=IDENT{addString($t.text);}
+                               (p2='/'?{addString($p2.text);} t2=IDENT{addString($t2.text);})* )
+     
+     ;
+     
+where_stmt 
+     :  WHERE ( clause (AND clause)* ) ?
+     ;
+    
+clause 
+     : file_name
+     | text
+     | regex
+     | modified
+     ;
+     
+file_name
+     : 'file' ':' STRING_LITERAL
+        {addString(" -name ");addString($STRING_LITERAL.text);}
+     ;
+     
+text
+     :   'text' ':' STRING_LITERAL
+        { filter.append(" | xargs grep ").append($STRING_LITERAL.text); }
+     ;
+   
+regex
+     :  'regex'  ':' STRING_LITERAL
+        { filter.append(" | xargs grep ").append(" -P ").append($STRING_LITERAL.text); }
+     ;
+     
+modified 
+     :  modified_less
+     |  modified_more
+     |  modified_between
+     ;
+     
+modified_less 
+     :   MODIFIED LESS THAN INTEGER time_span AGO
+         { addString(buildTimeArg($time_span.text,$INTEGER.text,"-")); }
+     ;
+     
+modified_more 
+     :   MODIFIED MORE THAN INTEGER time_span AGO
+         { addString(buildTimeArg($time_span.text,$INTEGER.text,"+")); }
+     ;
+     
+modified_between 
+     :   MODIFIED BETWEEN i1=INTEGER AND i2=INTEGER time_span AGO
+         { addString(buildTimeArg($time_span.text,$i1.text,"+")); }
+         { addString(buildTimeArg($time_span.text,$i2.text,"-")); }
+     ;
+     
+time_span 
+     :   'days' 
+     |   'minutes' 
+     |   'hours' 
+     ;
+     
+fragment DIGIT : '0'..'9';
+fragment LETTER : 'a'..'z'|'A'..'Z' ;
+
+SELECT:'select';
+ALL:'*';
+FROM:'from';
+WHERE:'where';
+MODIFIED:'modified';
+LESS:'less';
+MORE:'more';
+THAN:'than';
+BETWEEN:'between';
+AGO:'ago';
+AND:'and';
+
+STRING_LITERAL : '\''.*'\'';
+INTEGER : DIGIT+ ;
+IDENT : LETTER(LETTER | DIGIT)* ;
+WS : (' ' | '\t' | '\n' | '\r' | '\f')+  {$channel=HIDDEN;};
